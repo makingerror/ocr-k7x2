@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Live Screen OCR</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--card:#f3f4f6;--acc:#2563eb;--mut:#6b7280;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111418;--fg:#eceff4;--card:#1c2128;--acc:#60a5fa;--mut:#9aa4b2}}
+:root[data-theme="dark"]{--bg:#111418;--fg:#eceff4;--card:#1c2128;--acc:#60a5fa;--mut:#9aa4b2}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:12px;max-width:640px;margin-inline:auto}
+h1{font-size:1.15rem;margin:4px 0 10px}
+video{width:100%;max-height:34vh;background:#000;border-radius:10px;object-fit:contain}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;align-items:center}
+button,select{font:inherit;padding:10px 14px;border-radius:8px;border:1px solid var(--mut);background:var(--card);color:var(--fg)}
+button.p{background:var(--acc);color:#fff;border-color:var(--acc)}
+button:disabled{opacity:.5}
+#st{font-size:.85rem;color:var(--mut);margin:4px 0}
+textarea{width:100%;height:34vh;font:inherit;font-size:.95rem;padding:10px;border-radius:10px;border:1px solid var(--mut);background:var(--card);color:var(--fg)}
+</style>
+</head>
+<body>
+<h1>Live Screen OCR</h1>
+<video id="v" autoplay playsinline muted></video>
+<div class="row">
+  <button class="p" id="cam">1. Start camera</button>
+  <button id="go" disabled>2. Start capture</button>
+  <select id="iv" title="Capture interval">
+    <option value="2000">Every 2 s</option>
+    <option value="3000" selected>Every 3 s</option>
+    <option value="5000">Every 5 s</option>
+  </select>
+</div>
+<div id="st">Status: idle</div>
+<textarea id="out" placeholder="Extracted text appears here…"></textarea>
+<div class="row">
+  <button id="copy">Copy all</button>
+  <button id="clr">Clear</button>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const v=$('v'),out=$('out'),st=$('st'),go=$('go');
+let worker=null,timer=null,busy=false,seen=new Set();
+const setSt=t=>st.textContent='Status: '+t;
+const norm=s=>s.toLowerCase().replace(/[^a-z0-9\u0900-\u097f]+/g,' ').trim();
+
+$('cam').onclick=async()=>{
+  try{
+    const s=await navigator.mediaDevices.getUserMedia({video:{facetingMode:'environment',facingMode:'environment',width:{ideal:1920},height:{ideal:1080}},audio:false});
+    v.srcObject=s;go.disabled=false;setSt('camera ready');
+  }catch(e){setSt('camera blocked or unavailable ('+e.name+')');}
+};
+
+async function ensureWorker(){
+  if(worker)return;
+  setSt('loading OCR engine (first time only)…');
+  worker=await Tesseract.createWorker('eng');
+}
+
+async function tick(){
+  if(busy||!v.videoWidth)return;
+  busy=true;
+  try{
+    const c=document.createElement('canvas');
+    c.width=v.videoWidth;c.height=v.videoHeight;
+    c.getContext('2d').drawImage(v,0,0);
+    setSt('reading frame…');
+    const r=await worker.recognize(c);
+    let added=0;
+    for(const l of (r.data.lines||[])){
+      const t=l.text.trim(),k=norm(t);
+      if(l.confidence<60||k.length<4||seen.has(k))continue;
+      seen.add(k);out.value+=(out.value?'\n':'')+t;added++;
+    }
+    out.scrollTop=out.scrollHeight;
+    setSt('running · '+added+' new line(s) this round');
+  }catch(e){setSt('OCR error: '+e.message);}
+  busy=false;
+}
+
+go.onclick=async()=>{
+  if(timer){clearInterval(timer);timer=null;go.textContent='2. Start capture';setSt('stopped');return;}
+  try{await ensureWorker();}catch(e){setSt('could not load OCR engine: '+e.message);return;}
+  go.textContent='Stop capture';
+  tick();timer=setInterval(tick,+$('iv').value);
+};
+$('copy').onclick=async()=>{
+  try{await navigator.clipboard.writeText(out.value);}catch(e){out.select();document.execCommand('copy');}
+  setSt('copied');
+};
+$('clr').onclick=()=>{out.value='';seen.clear();setSt('cleared');};
+</script>
+</body>
+</html>
