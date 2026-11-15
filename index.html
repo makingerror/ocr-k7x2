@@ -3,94 +3,243 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Live Screen OCR</title>
+<title>Lens OCR</title>
 <style>
-:root{--bg:#fff;--fg:#1a1a1a;--card:#f3f4f6;--acc:#2563eb;--mut:#6b7280;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111418;--fg:#eceff4;--card:#1c2128;--acc:#60a5fa;--mut:#9aa4b2}}
-:root[data-theme="dark"]{--bg:#111418;--fg:#eceff4;--card:#1c2128;--acc:#60a5fa;--mut:#9aa4b2}
+:root{--bg:#fff;--fg:#1a1a1a;--card:#f3f4f6;--acc:#2563eb;--mut:#6b7280;--hl:rgba(37,99,235,.35);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111418;--fg:#eceff4;--card:#1c2128;--acc:#60a5fa;--mut:#9aa4b2;--hl:rgba(96,165,250,.4)}}
+:root[data-theme="dark"]{--bg:#111418;--fg:#eceff4;--card:#1c2128;--acc:#60a5fa;--mut:#9aa4b2;--hl:rgba(96,165,250,.4)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:12px;max-width:640px;margin-inline:auto}
-h1{font-size:1.15rem;margin:4px 0 10px}
-video{width:100%;max-height:34vh;background:#000;border-radius:10px;object-fit:contain}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;align-items:center}
-button,select{font:inherit;padding:10px 14px;border-radius:8px;border:1px solid var(--mut);background:var(--card);color:var(--fg)}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:10px;max-width:560px;margin-inline:auto}
+h1{font-size:1.05rem;margin:2px 0 8px}
+#stage{position:relative;width:100%;height:56vh;background:#000;border-radius:12px;overflow:hidden}
+#v,#snap{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+#snap{display:none}
+#ov{position:absolute;display:none;touch-action:none}
+.w{position:absolute;background:transparent;border:1px solid rgba(255,255,255,.55);border-radius:3px}
+.w.s{background:var(--hl);border-color:var(--acc)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:center}
+button{font:inherit;padding:10px 14px;border-radius:8px;border:1px solid var(--mut);background:var(--card);color:var(--fg)}
 button.p{background:var(--acc);color:#fff;border-color:var(--acc)}
+button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
 button:disabled{opacity:.5}
-#st{font-size:.85rem;color:var(--mut);margin:4px 0}
-textarea{width:100%;height:34vh;font:inherit;font-size:.95rem;padding:10px;border-radius:10px;border:1px solid var(--mut);background:var(--card);color:var(--fg)}
+.chip{padding:8px 14px;border-radius:999px;min-width:56px}
+input[type=range]{flex:1;min-width:120px}
+#st{font-size:.85rem;color:var(--mut);min-height:1.2em}
+textarea{width:100%;font:inherit;font-size:.95rem;padding:10px;border-radius:10px;border:1px solid var(--mut);background:var(--card);color:var(--fg)}
+#sheet{display:none;position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--mut);border-radius:16px 16px 0 0;padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px));box-shadow:0 -6px 24px rgba(0,0,0,.25);max-width:560px;margin-inline:auto;z-index:5}
+#sheet textarea{height:18vh}
+#live,#froz,#autoBox{display:none}
 </style>
 </head>
 <body>
-<h1>Live Screen OCR</h1>
-<video id="v" autoplay playsinline muted></video>
-<div class="row">
-  <button class="p" id="cam">1. Start camera</button>
-  <button id="go" disabled>2. Start capture</button>
-  <select id="iv" title="Capture interval">
-    <option value="2000">Every 2 s</option>
-    <option value="3000" selected>Every 3 s</option>
-    <option value="5000">Every 5 s</option>
-  </select>
+<h1>Lens OCR</h1>
+<div id="stage">
+  <video id="v" autoplay playsinline muted></video>
+  <img id="snap" alt="Captured frame">
+  <div id="ov"></div>
 </div>
-<div id="st">Status: idle</div>
-<textarea id="out" placeholder="Extracted text appears here…"></textarea>
-<div class="row">
-  <button id="copy">Copy all</button>
-  <button id="clr">Clear</button>
+<div id="st">Tap “Start camera”.</div>
+
+<div class="row" id="start"><button class="p" id="cam">Start camera</button></div>
+
+<div id="live">
+  <div class="row" id="chips">
+    <button class="chip" data-z="0.6">0.6×</button>
+    <button class="chip on" data-z="1">1×</button>
+    <button class="chip" data-z="2">2×</button>
+    <button class="chip" data-z="5">5×</button>
+    <input type="range" id="zr" min="0.6" max="5" step="0.1" value="1" aria-label="Zoom">
+  </div>
+  <div class="row">
+    <button class="p" id="cap">Capture text</button>
+    <button id="auto">Auto-collect: off</button>
+  </div>
+  <div id="autoBox">
+    <textarea id="log" rows="6" placeholder="Auto-collected lines appear here…"></textarea>
+    <div class="row"><button id="lcopy">Copy all</button><button id="lclr">Clear</button></div>
+  </div>
 </div>
+
+<div id="froz" class="row"><button class="p" id="retake">Retake</button><span style="color:var(--mut);font-size:.85rem">Tap or drag over words to select.</span></div>
+
+<div id="sheet">
+  <textarea id="sel" placeholder="Selected text appears here…"></textarea>
+  <div class="row">
+    <button class="p" id="copy">Copy</button>
+    <button id="all">Select all</button>
+    <button id="none">Clear selection</button>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);
-const v=$('v'),out=$('out'),st=$('st'),go=$('go');
-let worker=null,timer=null,busy=false,seen=new Set();
-const setSt=t=>st.textContent='Status: '+t;
+const v=$('v'),snap=$('snap'),ov=$('ov'),stage=$('stage'),st=$('st'),sel=$('sel');
+let stream=null,track=null,caps={},digital=1,worker=null,busy=false,timer=null;
+let mainId=null,wideId=null,onDev='main',words=[],seen=new Set(),dragVal=null,fw=0,fh=0;
+const setSt=t=>st.textContent=t;
 const norm=s=>s.toLowerCase().replace(/[^a-z0-9\u0900-\u097f]+/g,' ').trim();
 
+async function openStream(deviceId){
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  const base={width:{ideal:1920},height:{ideal:1080}};
+  const video=deviceId?{...base,deviceId:{exact:deviceId}}:{...base,facingMode:{ideal:'environment'}};
+  stream=await navigator.mediaDevices.getUserMedia({video,audio:false});
+  v.srcObject=stream;
+  track=stream.getVideoTracks()[0];
+  caps=track.getCapabilities?track.getCapabilities():{};
+}
+async function findWide(){
+  try{
+    const ds=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+    const w=ds.find(d=>/ultra|0\.5|wide/i.test(d.label)&&!/front|user/i.test(d.label)&&d.deviceId!==mainId);
+    wideId=w?w.deviceId:null;
+  }catch(e){wideId=null;}
+}
 $('cam').onclick=async()=>{
   try{
-    const s=await navigator.mediaDevices.getUserMedia({video:{facetingMode:'environment',facingMode:'environment',width:{ideal:1920},height:{ideal:1080}},audio:false});
-    v.srcObject=s;go.disabled=false;setSt('camera ready');
-  }catch(e){setSt('camera blocked or unavailable ('+e.name+')');}
+    await openStream();
+    mainId=track.getSettings().deviceId;
+    await findWide();
+    $('start').style.display='none';$('live').style.display='block';
+    setSt('Camera ready. Pick a zoom, then Capture.');
+  }catch(e){setSt('Camera blocked or unavailable ('+e.name+'). Open this page over https.');}
 };
 
+function mark(z){
+  document.querySelectorAll('.chip').forEach(b=>b.classList.toggle('on',+b.dataset.z===z));
+  $('zr').value=z;
+}
+async function setZoom(z){
+  try{
+    if(z<1){
+      if(caps.zoom&&caps.zoom.min<=z){await track.applyConstraints({advanced:[{zoom:z}]});digital=1;v.style.transform='';mark(z);return;}
+      if(wideId){
+        if(onDev!=='wide'){await openStream(wideId);onDev='wide';}
+        digital=1;v.style.transform='';mark(z);return;
+      }
+      setSt('0.6× lens is not available to this browser on your phone.');mark(1);return;
+    }
+    if(onDev==='wide'){await openStream(mainId);onDev='main';}
+    if(caps.zoom){
+      const zz=Math.min(Math.max(z,caps.zoom.min),caps.zoom.max);
+      await track.applyConstraints({advanced:[{zoom:zz}]});digital=1;v.style.transform='';
+    }else{digital=z;v.style.transform='scale('+z+')';}
+    mark(z);
+  }catch(e){setSt('Zoom error: '+e.message);}
+}
+document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>setZoom(+b.dataset.z));
+$('zr').oninput=e=>setZoom(+e.target.value);
+
+function getFrame(){
+  const vw=v.videoWidth,vh=v.videoHeight,d=digital;
+  const sw=vw/d,sh=vh/d,sx=(vw-sw)/2,sy=(vh-sh)/2;
+  const c=document.createElement('canvas');c.width=sw;c.height=sh;
+  c.getContext('2d').drawImage(v,sx,sy,sw,sh,0,0,sw,sh);
+  return c;
+}
 async function ensureWorker(){
   if(worker)return;
-  setSt('loading OCR engine (first time only)…');
+  setSt('Loading OCR engine (first time only)…');
   worker=await Tesseract.createWorker('eng');
 }
 
+/* ---------- Lens-style capture ---------- */
+$('cap').onclick=async()=>{
+  if(busy||!v.videoWidth)return;
+  busy=true;
+  const c=getFrame();fw=c.width;fh=c.height;
+  snap.src=c.toDataURL('image/jpeg',.92);
+  v.style.display='none';snap.style.display='block';
+  $('live').style.display='none';$('froz').style.display='flex';
+  try{
+    await ensureWorker();
+    setSt('Finding text…');
+    const r=await worker.recognize(c);
+    words=[];
+    (r.data.lines||[]).forEach((l,li)=>(l.words||[]).forEach(w=>{
+      if(w.confidence>40&&w.text.trim())words.push({t:w.text.trim(),li,b:w.bbox,sel:false});
+    }));
+    layout();
+    $('sheet').style.display='block';
+    setSt(words.length?words.length+' words found. Tap or drag to select.':'No text found. Try Retake with more zoom or light.');
+    refreshSel();
+  }catch(e){setSt('OCR error: '+e.message);}
+  busy=false;
+};
+function layout(){
+  const sw=stage.clientWidth,sh=stage.clientHeight;
+  const s=Math.min(sw/fw,sh/fh);
+  Object.assign(ov.style,{display:'block',width:fw*s+'px',height:fh*s+'px',left:(sw-fw*s)/2+'px',top:(sh-fh*s)/2+'px'});
+  ov.innerHTML='';
+  words.forEach((w,i)=>{
+    const d=document.createElement('div');
+    d.className='w'+(w.sel?' s':'');d.dataset.i=i;
+    Object.assign(d.style,{left:(w.b.x0*s-2)+'px',top:(w.b.y0*s-2)+'px',width:((w.b.x1-w.b.x0)*s+4)+'px',height:((w.b.y1-w.b.y0)*s+4)+'px'});
+    ov.appendChild(d);
+  });
+}
+function refreshSel(){
+  let out='',prev=-1;
+  words.forEach(w=>{if(w.sel){out+=(prev===-1?'':(w.li===prev?' ':'\n'))+w.t;prev=w.li;}});
+  sel.value=out;
+  ov.querySelectorAll('.w').forEach((d,i)=>d.classList.toggle('s',words[i].sel));
+}
+function hit(x,y){
+  const el=document.elementFromPoint(x,y);
+  if(el&&el.classList.contains('w')){words[+el.dataset.i].sel=dragVal;refreshSel();}
+}
+ov.addEventListener('pointerdown',e=>{
+  const el=document.elementFromPoint(e.clientX,e.clientY);
+  if(!el||!el.classList.contains('w'))return;
+  dragVal=!words[+el.dataset.i].sel;
+  ov.setPointerCapture(e.pointerId);hit(e.clientX,e.clientY);
+});
+ov.addEventListener('pointermove',e=>{if(dragVal!==null)hit(e.clientX,e.clientY);});
+ov.addEventListener('pointerup',()=>{dragVal=null;});
+ov.addEventListener('pointercancel',()=>{dragVal=null;});
+
+$('all').onclick=()=>{words.forEach(w=>w.sel=true);refreshSel();};
+$('none').onclick=()=>{words.forEach(w=>w.sel=false);refreshSel();};
+async function copyText(t,msg){
+  if(!t){setSt('Nothing to copy yet.');return;}
+  try{await navigator.clipboard.writeText(t);}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();}
+  setSt(msg);
+}
+$('copy').onclick=()=>copyText(sel.value,'Copied.');
+$('retake').onclick=()=>{
+  ov.style.display='none';ov.innerHTML='';words=[];
+  snap.style.display='none';v.style.display='block';
+  $('sheet').style.display='none';$('froz').style.display='none';$('live').style.display='block';
+  setSt('Camera ready.');
+};
+
+/* ---------- Hands-free auto-collect ---------- */
 async function tick(){
   if(busy||!v.videoWidth)return;
   busy=true;
   try{
-    const c=document.createElement('canvas');
-    c.width=v.videoWidth;c.height=v.videoHeight;
-    c.getContext('2d').drawImage(v,0,0);
-    setSt('reading frame…');
-    const r=await worker.recognize(c);
-    let added=0;
-    for(const l of (r.data.lines||[])){
+    const r=await worker.recognize(getFrame());
+    let n=0;const log=$('log');
+    (r.data.lines||[]).forEach(l=>{
       const t=l.text.trim(),k=norm(t);
-      if(l.confidence<60||k.length<4||seen.has(k))continue;
-      seen.add(k);out.value+=(out.value?'\n':'')+t;added++;
-    }
-    out.scrollTop=out.scrollHeight;
-    setSt('running · '+added+' new line(s) this round');
+      if(l.confidence<60||k.length<4||seen.has(k))return;
+      seen.add(k);log.value+=(log.value?'\n':'')+t;n++;
+    });
+    log.scrollTop=log.scrollHeight;
+    setSt('Auto-collecting · '+n+' new line(s)');
   }catch(e){setSt('OCR error: '+e.message);}
   busy=false;
 }
-
-go.onclick=async()=>{
-  if(timer){clearInterval(timer);timer=null;go.textContent='2. Start capture';setSt('stopped');return;}
-  try{await ensureWorker();}catch(e){setSt('could not load OCR engine: '+e.message);return;}
-  go.textContent='Stop capture';
-  tick();timer=setInterval(tick,+$('iv').value);
+$('auto').onclick=async()=>{
+  if(timer){clearInterval(timer);timer=null;$('auto').textContent='Auto-collect: off';$('auto').classList.remove('on');setSt('Auto-collect stopped.');return;}
+  try{await ensureWorker();}catch(e){setSt('Could not load OCR engine: '+e.message);return;}
+  $('autoBox').style.display='block';
+  $('auto').textContent='Auto-collect: on';$('auto').classList.add('on');
+  tick();timer=setInterval(tick,3000);
 };
-$('copy').onclick=async()=>{
-  try{await navigator.clipboard.writeText(out.value);}catch(e){out.select();document.execCommand('copy');}
-  setSt('copied');
-};
-$('clr').onclick=()=>{out.value='';seen.clear();setSt('cleared');};
+$('lcopy').onclick=()=>copyText($('log').value,'Copied all.');
+$('lclr').onclick=()=>{$('log').value='';seen.clear();};
 </script>
 </body>
 </html>
